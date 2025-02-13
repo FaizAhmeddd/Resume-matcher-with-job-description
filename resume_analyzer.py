@@ -109,7 +109,7 @@ class ResumeAnalyzer:
 
         # First prompt to extract technical skills
         skills_prompt = f"""
-        Analyze the job description and identify required technical skills.
+        "Only list skills that are explicitly mentioned in both the resume AND job description."
         For each skill found in both the job description and resume, list:
         1. The skill name
         2. When it was last used in the resume
@@ -158,7 +158,7 @@ class ResumeAnalyzer:
                     'mentions': 0
                 }
                 
-                # First line should be the skill name (strip any trailing colon)
+                # First line should be the skill name
                 if lines[0].endswith(':'):
                     skill_data['skill'] = lines[0][:-1].strip()
                 else:
@@ -182,6 +182,10 @@ class ResumeAnalyzer:
                 if skill_data['skill']:
                     skill_data['mentions'] = self.count_skill_occurrences(resume_text, skill_data['skill'])
                     
+                    # --- Add this critical check ---
+                    if skill_data['mentions'] <= 0:
+                        continue  # Skip skills not actually present in resume
+                        
                     # Calculate scores
                     scores = self.calculate_skill_scores(
                         skill_data['mentions'],
@@ -200,24 +204,36 @@ class ResumeAnalyzer:
             Analyze the following resume against the job description. 
             Provide a detailed analysis in these categories:
 
-            1. WORK EXPERIENCE EVALUATION
-            - Total years of IT experience
-            - Compare with job requirement (✅ Meets, ⚠️ Close, ❌ Below)
-            - List all job titles with duration in months
-            - Note which titles match job requirements
+        **1 Work Experience Evaluation also extract company names candidate worked at:**
+            - **Total Years of IT Experience**:
+            - Extract total years of experience.
+            - Compare with JD requirement.
+            - Categorize: ✅ Meets, ⚠️ Close, ❌ Below.
+            - Example: Candidate: 10 years, JD: 7 years → ✅  
+                Candidate: 5 years, JD: 7 years → ❌  
+            - **Job Title Match**:
+            - Extract job titles from resume and Total Number of experience in that role calculate in months.
+            - Compare against acceptable titles from JD.
+            - Check for related roles.
 
-            2. EDUCATION & CERTIFICATION MATCH
-            - Highest degree and field
-            - Whether it meets job requirements (✅/❌)
-            - Whether field is IT-related
-            - List all certifications
-            - Compare against required certifications
+        **2 Education & Certification Match**
+            - **Degree Requirement**:
+            - Check if highest degree **meets or exceeds** JD.
+            - Example: JD requires Bachelor's, Candidate has Master's → ✅  
+            - **Field of Study Relevance**:
+            - Identify if degree is **IT-related**.
+            - **Certification Match**:
+            - Extract required certifications from JD.
+            - Compare against the candidate’s certifications.
+            - ✅ Has Required Certifications  
+            - ❌ Missing Required Certifications  
 
-            3. ACHIEVEMENTS & DOMAIN EXPERIENCE
-            - List any awards, patents, publications
-            - Note presence of major achievements (✅/❌)
-            - List industries worked in
-            - Compare against preferred job domains
+
+            **3 Achievements & Domain Experience**
+            - Extract **awards, patents, publications**.
+            - Categorize: ✅ Has awards, ❌ No major recognitions.
+            - Identify industries the candidate has worked in.
+            - Compare against **preferred job domains**.
 
             4. PROJECT & TENURE ANALYSIS
             - Number of companies worked with
