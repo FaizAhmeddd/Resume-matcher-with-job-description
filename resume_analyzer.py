@@ -42,17 +42,14 @@ class ResumeAnalyzer:
             # Month Year format
             (r'(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})\s*(?:-|to|–)\s*(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(\d{4})',
              lambda m: (int(m.group(1)), int(m.group(2)))),
-            
-            # Single year with duration
-            (r'(\b20\d{2}\b).*?(\d+)\s*years?', lambda m: (int(m.group(1)) - int(m.group(2)), int(m.group(1))))
         ]
         
         # Find paragraphs containing the skill
-        paragraphs = text.lower().split('\n\n')
+        paragraphs = text.split('\n\n')
         skill_periods = []
         
         for para in paragraphs:
-            if re.search(skill_pattern, para):
+            if re.search(skill_pattern, para.lower()):
                 # Try each date pattern
                 for pattern, extract_years in date_patterns:
                     matches = re.finditer(pattern, para.lower())
@@ -61,122 +58,28 @@ class ResumeAnalyzer:
                             start_year, end_year = extract_years(match)
                             # Validate years
                             if start_year <= end_year and end_year <= current_year:
-                                skill_periods.append((start_year, end_year))
+                                # Get project/company context (first line of paragraph)
+                                context_lines = para.split('\n')
+                                project_context = context_lines[0].strip()
+                                skill_periods.append((start_year, end_year, project_context))
                         except (ValueError, IndexError):
                             continue
         
-        # If no valid periods found but skill is mentioned in current context
-        if not skill_periods and re.search(skill_pattern, text.lower()):
-            current_indicators = ['current', 'present', 'ongoing', 'now']
-            for indicator in current_indicators:
-                if indicator in text.lower():
-                    # Look for a start year in recent experience
-                    years = sorted([int(y) for y in re.findall(r'\b20\d{2}\b', text) 
-                                 if int(y) <= current_year], reverse=True)
-                    if years:
-                        skill_periods.append((years[0], current_year))
-                    else:
-                        # Default to 1 year if no explicit dates found
-                        skill_periods.append((current_year - 1, current_year))
-                    break
-        
-        return skill_periods
-
-    def calculate_total_skill_duration(self, periods):
-        """
-        Calculate total duration accounting for overlapping periods.
-        Returns total years of experience.
-        """
-        if not periods:
-            return 0
-            
-        # Sort periods by start date
-        sorted_periods = sorted(periods)
-        merged = [sorted_periods[0]]
-        
-        for current in sorted_periods[1:]:
-            previous = merged[-1]
-            
-            # Check for overlap
-            if current[0] <= previous[1]:
-                # Merge overlapping periods
-                merged[-1] = (previous[0], max(previous[1], current[1]))
-            else:
-                merged.append(current)
-        
-        # Calculate total years
-        total_years = sum(end - start for start, end in merged)
-        return total_years
-        
-        skill_pattern = rf'\b{re.escape(skill.lower())}\b'
-        skill_periods = []
-        
-        # Split text into experience sections
-        sections = re.split(r'\n\s*\n', text.lower())
-        
-        for section in sections:
-            if re.search(skill_pattern, section):
-                # Try each date pattern
-                for pattern in date_patterns:
-                    dates = re.finditer(pattern, section, re.IGNORECASE)
-                    for date_match in dates:
-                        # Extract years from the match
-                        start_year = int(date_match.group(1))
-                        end_str = date_match.group(2)
-                        
-                        # Handle 'present' or similar terms
-                        if end_str.lower() in ['present', 'current', 'now', 'ongoing']:
-                            end_year = self.current_year
-                        else:
-                            try:
-                                end_year = int(end_str)
-                            except ValueError:
-                                continue  # Skip if we can't parse the end year
-                        
-                        # Validate years
-                        if start_year > self.current_year or end_year > self.current_year:
-                            continue
-                        if start_year > end_year:
-                            continue
-                            
-                        skill_periods.append((start_year, end_year))
-        
         # If no periods found, try to find experience in work history sections
         if not skill_periods and re.search(skill_pattern, text.lower()):
-            # Look for experience sections
             exp_sections = re.split(r'(?i)(experience|work history|employment|professional background)[:.\n]', text.lower())
             
             for section in exp_sections:
                 if re.search(skill_pattern, section):
                     # Find all years in the section
                     years = sorted([int(y) for y in re.findall(r'\b(20\d{2})\b', section) 
-                                 if int(y) <= self.current_year])
+                                 if int(y) <= current_year])
                     
                     if len(years) >= 2:
                         start_year = min(years)
                         end_year = max(years)
-                        skill_periods.append((start_year, end_year))
-                    elif len(years) == 1:
-                        # If only one year found, check for duration indicators
-                        duration_match = re.search(r'(\d+)\s*(?:years?|yrs?)', section)
-                        if duration_match:
-                            years_of_exp = int(duration_match.group(1))
-                            if years_of_exp > 0:
-                                start_year = years[0] - years_of_exp
-                                end_year = years[0]
-                                skill_periods.append((start_year, end_year))
-                        else:
-                            # If no duration found, use the found year
-                            skill_periods.append((years[0], self.current_year))
-            
-            # If still no periods found, look for general experience indicators
-            if not skill_periods:
-                exp_match = re.search(r'(\d+)\s*(?:\+\s*)?(?:years?|yrs?).+?' + skill_pattern, text.lower())
-                if exp_match:
-                    years_of_exp = int(exp_match.group(1))
-                    if years_of_exp > 0:
-                        start_year = self.current_year - years_of_exp
-                        skill_periods.append((start_year, self.current_year))
+                        context = section.split('\n')[0].strip()
+                        skill_periods.append((start_year, end_year, context))
         
         return skill_periods
 
@@ -189,7 +92,8 @@ class ResumeAnalyzer:
             return 0
             
         # Sort periods by start date
-        sorted_periods = sorted(periods)
+        sorted_periods = [(start, end) for start, end, _ in periods]
+        sorted_periods.sort()
         merged = [sorted_periods[0]]
         
         for current in sorted_periods[1:]:
@@ -242,7 +146,7 @@ class ResumeAnalyzer:
         }
 
     def format_skills_output(self, skills_analysis):
-        """Format the skills output with detailed scoring"""
+        """Format the skills output with project context"""
         output = ""
         overall_score = 0
         count = 0
@@ -256,6 +160,8 @@ class ResumeAnalyzer:
             output += f"  Frequency Score: {skill['frequency_score']} (from {skill['mentions']} matches)\n"
             output += f"  Recency Score:   {skill['recency_score']} (Last used: {skill['last_used']})\n"
             output += f"  Duration Score:  {skill['duration_score']} (Duration: {skill['years_experience']} years)\n"
+            if 'last_project' in skill:
+                output += f"  Last Project:    {skill['last_project']}\n"
             output += f"  Final Match Score: {skill['total_score']:.2f} / 100\n\n"
         
         if count > 0:
@@ -271,7 +177,7 @@ class ResumeAnalyzer:
 
         # First prompt to extract technical skills
         skills_prompt = f"""
-        "Only list skills that are explicitly mentioned in both the resume AND job description."
+        "Only list skills that are explicitly mentioned in both the resume AND job description and make sure you get each skill from job description ."
         For each skill found in both the job description and resume, extract from the resume:
         1. The skill name
         2. When it was last used (look for date ranges in projects/experience)
@@ -283,6 +189,7 @@ class ResumeAnalyzer:
         - Last Used: YYYY or "Present" if current
         - Years Experience: X (calculated from actual date ranges)
         - Context: Brief description of where/how used
+        -
 
         Resume Text:
         {resume_text}
@@ -388,8 +295,13 @@ class ResumeAnalyzer:
 
             4. PROJECT & TENURE ANALYSIS
                 - Number of companies worked with
-                - Average project duration per company
+                - Total duration per company
                 - Rate tenure pattern (✅ >3 years, ⚠️ ~3 years, ❌ <3 years)
+                
+            5. Projects & Achievements
+            - Extract projects from resume
+            - Categorize: ✅ Has relevant projects, ❌ No relevant projects
+            
 
             Resume Text:
             {resume_text}
