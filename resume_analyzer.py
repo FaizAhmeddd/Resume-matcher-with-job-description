@@ -171,6 +171,8 @@ class ResumeAnalyzer:
         return output
 
     def analyze_resume(self, resume_text, job_description_text):
+
+        print ("job description text: ", job_description_text)
         """Analyze resume against job description with improved skill analysis"""
         if not resume_text or not job_description_text:
             return "Error: Missing resume or job description text"
@@ -297,7 +299,7 @@ class ResumeAnalyzer:
                 - Number of companies worked with
                 - Total duration per company
                 - Rate tenure pattern (✅ >3 years, ⚠️ ~3 years, ❌ <3 years)
-                
+
             5. Projects & Achievements
             - Extract projects from resume
             - Categorize: ✅ Has relevant projects, ❌ No relevant projects

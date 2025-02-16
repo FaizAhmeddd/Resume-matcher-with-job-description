@@ -51,7 +51,7 @@ def main() -> None:
             raise ValueError("Please set the OPENAI_API_KEY environment variable")
 
         # File paths - you can modify these or add command line arguments
-        resume_file_path = "RESUME/1.docx"
+        resume_file_path = "dumps/Faizan_Resume_AI_ML_ENGINEER.pdf"
         job_description_file_path = "dumps/EXAMPLE job_description.txt"
 
         # Print startup message
