@@ -171,13 +171,10 @@ class ResumeAnalyzer:
         return output
 
     def analyze_resume(self, resume_text, job_description_text):
-
-        print ("job description text: ", job_description_text)
-        """Analyze resume against job description with improved skill analysis"""
         if not resume_text or not job_description_text:
             return "Error: Missing resume or job description text"
 
-        # First prompt to extract technical skills
+        # ----- SKILLS ANALYSIS -----
         skills_prompt = f"""
         "Only list skills that are explicitly mentioned in both the resume AND job description and make sure you get each skill from job description ."
         For each skill found in both the job description and resume, extract from the resume:
@@ -210,100 +207,69 @@ class ResumeAnalyzer:
                 ],
                 temperature=0.2
             )
-            
-            # Process skills analysis
             skills_text = skills_response.choices[0].message.content
             skills_analysis = []
-            
-            # Split text into skill sections
+
+            # Process each skill section from the GPT response
             sections = skills_text.split('\n\n')
-            
             for section in sections:
                 lines = section.strip().split('\n')
                 if not lines:
                     continue
-                
-                skill_name = lines[0].strip(':').strip() if lines[0].endswith(':') else lines[0].strip()
-                
-                # Skip empty skill names
+
+                # Extract the skill name (assumes the first line is the skill name)
+                skill_name = lines[0].replace(":", "").strip()
                 if not skill_name:
                     continue
-                
-                # Extract skill periods from resume text
+
+                # Extract date ranges and compute duration from the resume text
                 skill_periods = self.extract_skill_duration_from_experience(resume_text, skill_name)
-                
-                # Calculate total experience and last used
                 total_years = self.calculate_total_skill_duration(skill_periods)
                 last_used = max([period[1] for period in skill_periods]) if skill_periods else self.current_year
-                
-                # Count actual mentions
+
+                # Count actual mentions in resume
                 mentions = self.count_skill_occurrences(resume_text, skill_name)
-                
-                # Skip if no actual mentions found
                 if mentions <= 0:
                     continue
-                
+
                 # Calculate scores
                 scores = self.calculate_skill_scores(mentions, last_used, total_years)
-                
-                # Combine all information
                 skill_data = {
                     'skill': skill_name,
                     'mentions': mentions,
-                    'last_used': last_used,
+                    'last_used': last_used if last_used != self.current_year else "Present",
                     'years_experience': total_years,
                     **scores
                 }
-                
                 skills_analysis.append(skill_data)
 
-            # Format skills output
             skills_output = self.format_skills_output(skills_analysis)
 
-            # Get general analysis from GPT-4
+            # ----- GENERAL ANALYSIS -----
             general_prompt = f"""
             Analyze the following resume against the job description. 
             Provide a detailed analysis in these categories:
 
-            **1 Work Experience or Professional Experience Evaluation also extract company names candidate worked at:**
-                - **Total Years of IT Experience**:
-                - Extract total years of experience.
-                - Compare with JD requirement.
-                - Categorize: ✅ Meets, ⚠️ Close, ❌ Below.
-                - Example: Candidate: 10 years, JD: 7 years → ✅  
-                    Candidate: 5 years, JD: 7 years → ❌  
-                - **Job Title Match**:
-                - Extract job titles from resume and Total Number of experience in that role calculate in months.
-                - Compare against acceptable titles from JD.
-                - Check for related roles.
+            **1. Work Experience or Professional Experience Evaluation (also extract company names):**
+                - Total Years of IT Experience
+                - Comparison with JD requirements
+                - Job Title Match and role durations in months
 
-            **2 Education & Certification Match**
-                - **Degree Requirement**:
-                - Check if highest degree **meets or exceeds** JD.
-                - Example: JD requires Bachelor's, Candidate has Master's → ✅  
-                - **Field of Study Relevance**:
-                - Identify if degree is **IT-related**.
-                - **Certification Match**:
-                - Extract required certifications from JD.
-                - Compare against the candidate's certifications.
-                - ✅ Has Required Certifications  
-                - ❌ Missing Required Certifications  
+            **2. Education & Certification Match:**
+                - Degree Qualification (meets/exceeds JD requirements)
+                - Field of Study Relevance
+                - Certification Match
 
-            **3 Achievements & Domain Experience**
-                - Extract **awards, patents, publications**.
-                - Categorize: ✅ Has awards, ❌ No major recognitions.
-                - Identify industries the candidate has worked in.
-                - Compare against **preferred job domains**.
+            **3. Achievements & Domain Experience:**
+                - Awards, patents, publications
+                - Industry experience and preferred domains
 
-            4. PROJECT & TENURE ANALYSIS
-                - Number of companies worked with
-                - Total duration per company
-                - Rate tenure pattern (✅ >3 years, ⚠️ ~3 years, ❌ <3 years)
+            **4. Project & Tenure Analysis:**
+                - Number of companies worked at
+                - Total duration per company and overall tenure pattern
 
-            5. Projects & Achievements
-            - Extract projects from resume
-            - Categorize: ✅ Has relevant projects, ❌ No relevant projects
-            
+            **5. Projects & Achievements:**
+                - List of relevant projects
 
             Resume Text:
             {resume_text}
@@ -320,13 +286,19 @@ class ResumeAnalyzer:
                 ],
                 temperature=0.2
             )
+            general_analysis = general_response.choices[0].message.content
 
-            # Combine the formatted skills output with the general analysis
-            result = skills_output + "\n" + general_response.choices[0].message.content
-            return result
+            # ----- COMBINING OUTPUTS INTO A FINAL REPORT -----
+            final_report = ""
+            final_report += self.format_section("SKILLS ANALYSIS", skills_output)
+            final_report += self.format_section("GENERAL ANALYSIS", general_analysis)
+            final_report += self.format_section("OVERALL EVALUATION", "Please refer to the above sections for a detailed evaluation of the candidate's fit for the role.")
+            
+            return final_report
 
         except Exception as e:
             return f"Error in analysis: {str(e)}"
+
 
 
     def format_section(self, title, content=""):
