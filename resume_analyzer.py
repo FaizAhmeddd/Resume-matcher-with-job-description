@@ -170,6 +170,7 @@ class ResumeAnalyzer:
             output += f"  Final Match Score: {overall_final_score:.2f} / 100\n\n"
         return output
 
+    # Add this method to your ResumeAnalyzer class
     def analyze_resume(self, resume_text, job_description_text):
         if not resume_text or not job_description_text:
             return {"error": "Missing resume or job description text"}
@@ -189,7 +190,6 @@ class ResumeAnalyzer:
             - Last Used: YYYY or "Present" if current
             - Years Experience: X
             - Context: Brief description of where/how used
-            -
 
             Resume Text:
             {resume_text}
@@ -217,22 +217,19 @@ class ResumeAnalyzer:
                 if not lines:
                     continue
 
-                # Extract the skill name (assumes the first line is the skill name)
                 skill_name = lines[0].replace(":", "").strip()
                 if not skill_name:
                     continue
 
-                # Extract date ranges and compute duration from the resume text
                 skill_periods = self.extract_skill_duration_from_experience(resume_text, skill_name)
                 total_years = self.calculate_total_skill_duration(skill_periods)
                 last_used = max([period[1] for period in skill_periods]) if skill_periods else self.current_year
+                last_project = skill_periods[-1][2] if skill_periods else ""
 
-                # Count actual mentions in resume
                 mentions = self.count_skill_occurrences(resume_text, skill_name)
                 if mentions <= 0:
                     continue
 
-                # Calculate scores
                 scores = self.calculate_skill_scores(mentions, last_used, total_years)
                 skill_data = {
                     'skill': skill_name,
@@ -242,76 +239,120 @@ class ResumeAnalyzer:
                     'frequency_score': scores['frequency_score'],
                     'recency_score': scores['recency_score'],
                     'duration_score': scores['duration_score'],
-                    'total_score': scores['total_score']
+                    'total_score': scores['total_score'],
+                    'last_project': last_project
                 }
                 skills_analysis_list.append(skill_data)
 
-            skills_analysis = {
+            skills_section = {
                 "skills": skills_analysis_list,
                 "final_match_score": round(
                     sum(skill["total_score"] for skill in skills_analysis_list) / len(skills_analysis_list)
-                    if skills_analysis_list else 0, 2)
+                    if skills_analysis_list else 0, 2
+                )
             }
 
-            # ----- GENERAL ANALYSIS (Plain Text Format) -----
-            # Modify the prompt to instruct GPT to output plain text (similar to skills analysis)
             # ----- GENERAL ANALYSIS -----
             general_prompt = f"""
-            Analyze the following resume against the job description. 
-            Provide a detailed analysis in these categories:
+            Analyze the resume against the job description and output a JSON object with the following exact structure. Include all fields exactly as shown, using empty arrays or null values where information is not available:
 
-            **1. Work Experience or Professional Experience Evaluation (also extract company names):**
-                - Total Years of IT Experience
-                - Comparison with JD requirements
-                - Job Title Match and role durations in months
-
-            **2. Education & Certification Match:**
-                - Degree Qualification (meets/exceeds JD requirements)
-                - Field of Study Relevance
-                - Certification Match
-
-            **3. Achievements & Domain Experience:**
-                - Awards, patents, publications
-                - Industry experience and preferred domains
-
-            **4. Project & Tenure Analysis:**
-                - Number of companies worked at
-                - Total duration per company and overall tenure pattern
-
-            **5. Projects & Achievements or Certifications or Courses:**
-                - List of relevant projects
-                - Relevant certifications or courses
+            {{
+                "work_experience": {{
+                    "total_it_experience": "string",
+                    "jd_requirements_comparison": "string",
+                    "job_titles": [
+                        {{
+                            "title": "string",
+                            "duration_months": number
+                        }}
+                    ],
+                    "company_names": []
+                }},
+                "education_certification": {{
+                    "degree_qualification": {{
+                        "meets_requirements": boolean,
+                        "details": "string"
+                    }},
+                    "field_of_study": {{
+                        "relevance": "string",
+                        "details": "string"
+                    }},
+                    "certifications": {{
+                        "matches": [],
+                        "missing": []
+                    }}
+                }},
+                "achievements_domain": {{
+                    "awards": [],
+                    "patents": [],
+                    "publications": [],
+                    "industry_experience": {{
+                        "domains": [],
+                        "details": "string"
+                    }}
+                }},
+                "project_tenure": {{
+                    "companies_count": number,
+                    "companies": [
+                        {{
+                            "name": "string",
+                            "duration": "string",
+                            "tenure_pattern": "string"
+                        }}
+                    ]
+                }},
+                "projects": [
+                    {{
+                        "name": "string",
+                        "description": "string",
+                        "technologies": [],
+                        "duration": "string"
+                    }}
+                ]
+            }}
 
             Resume Text:
             {resume_text}
 
             Job Description:
             {job_description_text}
+
+            IMPORTANT: Return ONLY the JSON object, with no additional text before or after. Ensure all JSON syntax is valid.
             """
 
             general_response = self.client.chat.completions.create(
                 model="gpt-4-0125-preview",
                 messages=[
-                    {"role": "system", "content": "You are an expert resume analyzer providing detailed analysis in plain text."},
+                    {"role": "system", "content": "You are an expert resume analyzer. Provide analysis in structured JSON format."},
                     {"role": "user", "content": general_prompt}
                 ],
                 temperature=0.2
             )
-            general_analysis_text = general_response.choices[0].message.content
+            
+            # Parse the GPT response into JSON with error handling
+            import json
+            try:
+                response_content = general_response.choices[0].message.content.strip()
+                # Remove any potential markdown code block indicators
+                response_content = response_content.replace('```json', '').replace('```', '').strip()
+                general_section = json.loads(response_content)
+            except json.JSONDecodeError as e:
+                return {"error": f"Invalid JSON response from GPT: {str(e)}", "raw_response": response_content}
+            except Exception as e:
+                return {"error": f"Error processing general analysis: {str(e)}"}
 
-            # ----- COMBINING OUTPUTS INTO A FINAL REPORT -----
-            final_report = ""
-            final_report += self.format_section("SKILLS ANALYSIS", self.format_skills_output(skills_analysis["skills"]))
-            final_report += self.format_section("GENERAL ANALYSIS", general_analysis_text)
-            final_report += self.format_section("OVERALL EVALUATION", "Please refer to the above sections for a detailed evaluation of the candidate's fit for the role.")
+            # Combine both sections into final output
+            final_json = {
+                "resume_analysis": {
+                    "skills_section": skills_section,
+                    "general_section": general_section
+                }
+            }
 
-            return final_report
+            return final_json
 
         except Exception as e:
             return {"error": f"Error in analysis: {str(e)}"}
-
-
-
 
 
     def format_section(self, title, content=""):

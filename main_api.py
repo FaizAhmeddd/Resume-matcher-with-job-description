@@ -26,33 +26,6 @@ def setup_paths(resume_path: str, job_desc_path: str) -> tuple[pathlib.Path, pat
     
     return resume_path, job_desc_path
 
-import json
-
-def save_analysis_results(analysis_result, output_dir: str = "analysis_results") -> None:
-    """Save analysis results to a file"""
-    try:
-        # Create output directory if it doesn't exist
-        output_path = pathlib.Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-        
-        # Convert dict to a JSON string if necessary
-        if isinstance(analysis_result, dict):
-            analysis_result = json.dumps(analysis_result, indent=2)
-        
-        # Generate filename with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_file = output_path / f"resume_analysis_{timestamp}.txt"
-        
-        # Save results
-        with open(output_file, 'w', encoding='utf-8') as f:
-            f.write(analysis_result)
-            
-        print(f"\nAnalysis results saved to: {output_file}")
-        
-    except Exception as e:
-        print(f"Error saving analysis results: {str(e)}")
-
-
 @app.post("/analyze-resume/")
 async def analyze_resume(resume: UploadFile = File(...), job_description: UploadFile = File(...)):
     """API endpoint to analyze resume against job description"""
@@ -90,10 +63,7 @@ async def analyze_resume(resume: UploadFile = File(...), job_description: Upload
         # Perform analysis
         analysis_result = analyzer.analyze_resume(resume_text, job_description_text)
         
-        # Save results to file
-        save_analysis_results(analysis_result)
-        
-        # Return the analysis result
+        # Return the analysis result directly as API response
         return JSONResponse(content={"analysis_result": analysis_result})
 
     except FileNotFoundError as e:
