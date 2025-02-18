@@ -172,33 +172,33 @@ class ResumeAnalyzer:
 
     def analyze_resume(self, resume_text, job_description_text):
         if not resume_text or not job_description_text:
-            return "Error: Missing resume or job description text"
-
-        # ----- SKILLS ANALYSIS -----
-        skills_prompt = f"""
-        "Only list skills that are explicitly mentioned in both the resume AND job description and make sure you get each skill from job description ."
-        For each skill found in both the job description and resume, extract from the resume:
-        1. The skill name
-        2. When it was last used (look for date ranges in projects/experience)
-        3. Total years of experience (calculate from work experience sections)
-        4. Project or role context where it was used
-
-        Use EXACTLY this format for each skill (including the exact labels):
-        SKILL NAME:
-        - Last Used: YYYY or "Present" if current
-        - Years Experience: X (calculated from actual date ranges)
-        - Context: Brief description of where/how used
-        -
-
-        Resume Text:
-        {resume_text}
-
-        Job Description:
-        {job_description_text}
-        """
+            return {"error": "Missing resume or job description text"}
 
         try:
-            # Get skills analysis from GPT
+            # ----- SKILLS ANALYSIS -----
+            skills_prompt = f"""
+            "Only list skills that are explicitly mentioned in both the resume AND job description and make sure you get each skill from job description."
+            For each skill found in both the job description and resume, extract from the resume:
+            1. The skill name
+            2. When it was last used (look for date ranges in projects/experience)
+            3. Total years of experience (calculated from actual date ranges)
+            4. Project or role context where it was used
+
+            Use EXACTLY this format for each skill (including the exact labels):
+            SKILL NAME:
+            - Last Used: YYYY or "Present" if current
+            - Years Experience: X
+            - Context: Brief description of where/how used
+            -
+
+            Resume Text:
+            {resume_text}
+
+            Job Description:
+            {job_description_text}
+            """
+
+            # Request skills analysis from GPT
             skills_response = self.client.chat.completions.create(
                 model="gpt-4-0125-preview",
                 messages=[
@@ -208,7 +208,7 @@ class ResumeAnalyzer:
                 temperature=0.2
             )
             skills_text = skills_response.choices[0].message.content
-            skills_analysis = []
+            skills_analysis_list = []
 
             # Process each skill section from the GPT response
             sections = skills_text.split('\n\n')
@@ -239,12 +239,22 @@ class ResumeAnalyzer:
                     'mentions': mentions,
                     'last_used': last_used if last_used != self.current_year else "Present",
                     'years_experience': total_years,
-                    **scores
+                    'frequency_score': scores['frequency_score'],
+                    'recency_score': scores['recency_score'],
+                    'duration_score': scores['duration_score'],
+                    'total_score': scores['total_score']
                 }
-                skills_analysis.append(skill_data)
+                skills_analysis_list.append(skill_data)
 
-            skills_output = self.format_skills_output(skills_analysis)
+            skills_analysis = {
+                "skills": skills_analysis_list,
+                "final_match_score": round(
+                    sum(skill["total_score"] for skill in skills_analysis_list) / len(skills_analysis_list)
+                    if skills_analysis_list else 0, 2)
+            }
 
+            # ----- GENERAL ANALYSIS (Plain Text Format) -----
+            # Modify the prompt to instruct GPT to output plain text (similar to skills analysis)
             # ----- GENERAL ANALYSIS -----
             general_prompt = f"""
             Analyze the following resume against the job description. 
@@ -268,8 +278,9 @@ class ResumeAnalyzer:
                 - Number of companies worked at
                 - Total duration per company and overall tenure pattern
 
-            **5. Projects & Achievements:**
+            **5. Projects & Achievements or Certifications or Courses:**
                 - List of relevant projects
+                - Relevant certifications or courses
 
             Resume Text:
             {resume_text}
@@ -281,23 +292,25 @@ class ResumeAnalyzer:
             general_response = self.client.chat.completions.create(
                 model="gpt-4-0125-preview",
                 messages=[
-                    {"role": "system", "content": "You are an expert resume analyzer providing detailed, well-structured analysis."},
+                    {"role": "system", "content": "You are an expert resume analyzer providing detailed analysis in plain text."},
                     {"role": "user", "content": general_prompt}
                 ],
                 temperature=0.2
             )
-            general_analysis = general_response.choices[0].message.content
+            general_analysis_text = general_response.choices[0].message.content
 
             # ----- COMBINING OUTPUTS INTO A FINAL REPORT -----
             final_report = ""
-            final_report += self.format_section("SKILLS ANALYSIS", skills_output)
-            final_report += self.format_section("GENERAL ANALYSIS", general_analysis)
+            final_report += self.format_section("SKILLS ANALYSIS", self.format_skills_output(skills_analysis["skills"]))
+            final_report += self.format_section("GENERAL ANALYSIS", general_analysis_text)
             final_report += self.format_section("OVERALL EVALUATION", "Please refer to the above sections for a detailed evaluation of the candidate's fit for the role.")
-            
+
             return final_report
 
         except Exception as e:
-            return f"Error in analysis: {str(e)}"
+            return {"error": f"Error in analysis: {str(e)}"}
+
+
 
 
 
