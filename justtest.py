@@ -60,69 +60,7 @@ class DocumentParser:
             print(f"Error reading TXT file: {str(e)}")
             return None
 
-class ResumeAnalyzer:
-    def __init__(self, api_key):
-        if not api_key:
-            raise ValueError("API key cannot be empty")
-        self.client = OpenAI(api_key=api_key)
-        self.current_year = datetime.now().year
 
-    def count_skill_occurrences(self, text, skill):
-        """Count how many times a skill is mentioned in text"""
-        if not text or not skill:
-            return 0
-        pattern = r'\b' + re.escape(skill.lower()) + r'\b'
-        matches = re.findall(pattern, text.lower())
-        return len(matches)
-
-    def extract_year(self, text, default=None):
-        """Safely extract year from text"""
-        if not text:
-            return default or self.current_year
-        match = re.search(r'\b(19|20)\d{2}\b', text)
-        return int(match.group()) if match else (default or self.current_year)
-
-    def calculate_experience_years(self, year_or_duration):
-        """Convert year or duration to years of experience"""
-        if isinstance(year_or_duration, int):
-            if year_or_duration > 1900:  # It's a year
-                return max(0, self.current_year - year_or_duration)
-            return year_or_duration  # It's already duration
-        return 0
-
-    def calculate_skill_scores(self, mentions, last_used_year, experience_years):
-        """Calculate skill scores based on mentions, recency, and experience"""
-        # Frequency score: 10 points per mention, max 100
-        frequency_score = min(mentions * 10, 100)
-        
-        # Recency score
-        if last_used_year >= self.current_year:
-            recency_score = 100
-        else:
-            years_ago = self.current_year - last_used_year
-            if years_ago <= 2:
-                recency_score = 90
-            elif years_ago <= 5:
-                recency_score = 70
-            else:
-                recency_score = max(0, 50 - (years_ago - 5) * 10)
-        
-        # Duration score: 10 points per year, max 100
-        duration_score = min(experience_years * 10, 100)
-        
-        # Calculate weighted total
-        total_score = (
-            frequency_score * 0.4 +  # 40% weight for frequency
-            recency_score * 0.3 +    # 30% weight for recency
-            duration_score * 0.3      # 30% weight for duration
-        )
-        
-        return {
-            'frequency_score': frequency_score,
-            'recency_score': recency_score,
-            'duration_score': duration_score,
-            'total_score': round(total_score, 1)
-        }
 
 class ResumeAnalyzer:
     def __init__(self, api_key):
