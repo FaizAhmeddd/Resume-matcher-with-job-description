@@ -254,62 +254,32 @@ class ResumeAnalyzer:
 
             # ----- GENERAL ANALYSIS -----
             general_prompt = f"""
-            Analyze the resume against the job description and output a JSON object with the following exact structure. Include all fields exactly as shown, using empty arrays or null values where information is not available:
+            Analyze the resume against the job description and provide a structured analysis in JSON format with these categories:
 
-            {{
-                "work_experience": {{
-                    "total_it_experience": "string",
-                    "jd_requirements_comparison": "string",
-                    "job_titles": [
-                        {{
-                            "title": "string",
-                            "duration_months": number
-                        }}
-                    ],
-                    "company_names": []
-                }},
-                "education_certification": {{
-                    "degree_qualification": {{
-                        "meets_requirements": boolean,
-                        "details": "string"
-                    }},
-                    "field_of_study": {{
-                        "relevance": "string",
-                        "details": "string"
-                    }},
-                    "certifications": {{
-                        "matches": [],
-                        "missing": []
-                    }}
-                }},
-                "achievements_domain": {{
-                    "awards": [],
-                    "patents": [],
-                    "publications": [],
-                    "industry_experience": {{
-                        "domains": [],
-                        "details": "string"
-                    }}
-                }},
-                "project_tenure": {{
-                    "companies_count": number,
-                    "companies": [
-                        {{
-                            "name": "string",
-                            "duration": "string",
-                            "tenure_pattern": "string"
-                        }}
-                    ]
-                }},
-                "projects": [
-                    {{
-                        "name": "string",
-                        "description": "string",
-                        "technologies": [],
-                        "duration": "string"
-                    }}
-                ]
-            }}
+            1. Work Experience:
+            - Total IT experience
+            - Comparison with JD requirements
+            - List of job titles with durations
+            - Company names
+
+            2. Education & Certification:
+            - Degree qualification (meets/exceeds requirements)
+            - Field of study relevance
+            - Certification matches and gaps
+
+            3. Achievements & Domain:
+            - List of awards, patents, publications
+            - Industry experience and domains
+
+            4. Project & Tenure:
+            - Number of companies
+            - Duration per company
+            - Overall tenure pattern
+
+            5. Projects:
+            - List of relevant projects with descriptions
+            - Technologies used
+            - Project durations
 
             Resume Text:
             {resume_text}
@@ -317,7 +287,7 @@ class ResumeAnalyzer:
             Job Description:
             {job_description_text}
 
-            IMPORTANT: Return ONLY the JSON object, with no additional text before or after. Ensure all JSON syntax is valid.
+            Return the analysis in valid JSON format.
             """
 
             general_response = self.client.chat.completions.create(
@@ -329,17 +299,9 @@ class ResumeAnalyzer:
                 temperature=0.2
             )
             
-            # Parse the GPT response into JSON with error handling
+            # Parse the GPT response into JSON
             import json
-            try:
-                response_content = general_response.choices[0].message.content.strip()
-                # Remove any potential markdown code block indicators
-                response_content = response_content.replace('```json', '').replace('```', '').strip()
-                general_section = json.loads(response_content)
-            except json.JSONDecodeError as e:
-                return {"error": f"Invalid JSON response from GPT: {str(e)}", "raw_response": response_content}
-            except Exception as e:
-                return {"error": f"Error processing general analysis: {str(e)}"}
+            general_section = json.loads(general_response.choices[0].message.content)
 
             # Combine both sections into final output
             final_json = {
@@ -353,6 +315,8 @@ class ResumeAnalyzer:
 
         except Exception as e:
             return {"error": f"Error in analysis: {str(e)}"}
+
+
 
 
     def format_section(self, title, content=""):

@@ -7,7 +7,7 @@ from docx import Document
 from openai import OpenAI
 from typing import Optional, Dict, Any
 from document_text_extraction import DocumentParser
-from resume_analyzer import ResumeAnalyzer
+from resume_analysis import ResumeAnalyzer
 
 def setup_paths(resume_path: str, job_desc_path: str) -> tuple[pathlib.Path, pathlib.Path]:
     """Setup and validate file paths"""
