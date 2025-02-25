@@ -1,84 +1,109 @@
-import os
-import re
-import pathlib
-from datetime import datetime
-import fitz  # PyMuPDF for PDF extraction
-from docx import Document
-from openai import OpenAI
-from typing import Optional, Dict, Any
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
-from document_text_extraction import DocumentParser
-from resume_analyzer import ResumeAnalyzer
+from fastapi import FastAPI
+from pydantic import BaseModel
+from typing import Dict, Optional, Any
+import logging
+import traceback
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException as FastAPIHTTPException
+from dotenv import load_dotenv
+from ResumeMatchingWithAPI import evaluate_candidates_comprehensive
+
+load_dotenv()
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
-def setup_paths(resume_path: str, job_desc_path: str) -> tuple[pathlib.Path, pathlib.Path]:
-    """Setup and validate file paths"""
-    resume_path = pathlib.Path(resume_path)
-    job_desc_path = pathlib.Path(job_desc_path)
-    
-    for path in [resume_path, job_desc_path]:
-        if not path.exists():
-            raise FileNotFoundError(f"File not found: {path}")
-        if not path.is_file():
-            raise ValueError(f"Not a file: {path}")
-    
-    return resume_path, job_desc_path
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Adjust this in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-@app.post("/analyze-resume/")
-async def analyze_resume(resume: UploadFile = File(...), job_description: UploadFile = File(...)):
-    """API endpoint to analyze resume against job description"""
+
+class EvaluationRequest(BaseModel):
+    job_id: int
+
+
+class CandidateScore(BaseModel):
+    candidate_id: int
+    final_score: float
+
+
+class StandardResponse(BaseModel):
+    success: bool
+    status: str
+    data: Optional[Dict[str, Any]] = None
+    message: Optional[str] = None
+
+
+@app.post("/evaluate-candidates/{job_id}")
+async def evaluate_candidates(job_id: int) -> StandardResponse:
+    """
+    Evaluate candidates for a specific job and return their scores.
+    
+    Args:
+        job_id (int): The ID of the job for evaluation
+        
+    Returns:
+        StandardResponse: Standardized response with evaluation results
+    """
     try:
-        # Get API key from environment variable
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("Please set the OPENAI_API_KEY environment variable")
-
-        # Save uploaded files temporarily
-        resume_path = pathlib.Path("temp_resume.pdf")
-        job_desc_path = pathlib.Path("temp_job_desc.txt")
-
-        with open(resume_path, "wb") as resume_file:
-            resume_file.write(resume.file.read())
+        # Get results from the evaluation function
+        final_scores = evaluate_candidates_comprehensive(job_id)
         
-        with open(job_desc_path, "wb") as job_desc_file:
-            job_desc_file.write(job_description.file.read())
-
-        # Setup paths
-        resume_path, job_desc_path = setup_paths(str(resume_path), str(job_desc_path))
-
-        # Initialize analyzer
-        analyzer = ResumeAnalyzer(api_key)
-
-        # Read files
-        resume_text = DocumentParser.read_file(resume_path)
-        if not resume_text:
-            raise ValueError(f"Failed to read resume file: {resume_path}")
+        # Log the successful completion
+        logger.info(f"Evaluation completed for job_id: {job_id}")
         
-        job_description_text = DocumentParser.read_file(job_desc_path)
-        if not job_description_text:
-            raise ValueError(f"Failed to read job description file: {job_desc_path}")
-
-        # Perform analysis
-        analysis_result = analyzer.analyze_resume(resume_text, job_description_text)
+        # Sort candidates by final score (highest to lowest)
+        sorted_scores = sorted(
+            final_scores, key=lambda x: x["final_score"], reverse=True
+        )
         
-        # Return the analysis result directly as API response
-        return JSONResponse(content={"analysis_result": analysis_result})
-
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid input: {str(e)}")
+        return StandardResponse(
+            success=True,
+            status="success",
+            data={
+                "job_id": job_id,
+                "candidates": sorted_scores,
+                "total_candidates": len(sorted_scores),
+            },
+        )
+    
+    except FastAPIHTTPException as he:
+        # Properly extract FastAPI HTTPException details
+        status_code = he.status_code
+        error_detail = he.detail
+        
+        # Log the error with proper details
+        logger.error(f"HTTP Exception ({status_code}): {error_detail}")
+        
+        return StandardResponse(
+            success=False,
+            status="error",
+            message=f"Evaluation process failed: {error_detail}"
+        )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-    finally:
-        # Clean up temporary files
-        if 'resume_path' in locals() and resume_path.exists():
-            resume_path.unlink()
-        if 'job_desc_path' in locals() and job_desc_path.exists():
-            job_desc_path.unlink()
+        # Log the full error traceback
+        logger.error(f"Error in evaluate_candidates: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        return StandardResponse(
+            success=False,
+            status="error",
+            message=f"Evaluation process failed: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, loop="asyncio")
+    server = uvicorn.Server(config)
+    server.run()
