@@ -64,11 +64,8 @@ class DatabaseConnection:
             )
             self.cur = self.conn.cursor()
         except Exception as e:
-            # if self.ssh_tunnel:
-                # self.ssh_tunnel.close()
-            raise HTTPException(
-                status_code=500, detail=f"Database connection failed: {str(e)}"
-            )
+            raise HTTPException( status_code= 500, detail=f"Database connection failed: {str(e)}" )
+            
 
     def close(self):
         """Closes database connection and cursor"""
