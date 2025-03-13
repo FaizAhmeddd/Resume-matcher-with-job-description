@@ -20,24 +20,7 @@ class DatabaseConnection:
         self.cur = None
         self.ssh_tunnel = None
 
-    def create_ssh_tunnel(self):
-        """
-        Creates and returns an SSHTunnelForwarder object.
-        """
-        try:
-            self.ssh_tunnel = sshtunnel.SSHTunnelForwarder(
-                ('ec2-52-15-194-170.us-east-2.compute.amazonaws.com', 22),  # Bastion host
-                ssh_username='ec2-user',
-                ssh_pkey='BastionHostKeyPair.pem',  # Path to your key file
-                remote_bind_address=('databasets.chygq4ecec7u.us-east-2.rds.amazonaws.com', 5432),
-                local_bind_address=('127.0.0.1', 6543)  # Local port forwarding
-            )
-            self.ssh_tunnel.start()
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"SSH tunnel creation failed: {str(e)}"
-            )
+
 
     def connect(self):
         """Establishes connection to the database through SSH tunnel"""
