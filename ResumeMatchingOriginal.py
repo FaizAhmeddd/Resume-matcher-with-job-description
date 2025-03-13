@@ -22,20 +22,7 @@ class DatabaseConnection:
 
 
 
-    def connect(self):
-        """Establishes connection to the database through SSH tunnel"""
-        try:
-            # First create the SSH tunnel
-            self.create_ssh_tunnel()
 
-            # Then connect to the database through the tunnel
-            self.conn = psycopg2.connect(
-                dbname='seekers',
-                user='postgres_TS',
-                password='BBCPs2025_',
-                host='127.0.0.1',  # Connect to local tunnel endpoint
-                port=6543  # Use the local tunnel port
-            )
             self.cur = self.conn.cursor()
         except Exception as e:
             if self.ssh_tunnel:
