@@ -18,68 +18,7 @@ load_dotenv()
 # -------------------------- Database Connection --------------------------
 
 
-class DatabaseConnection:
-    def __init__(self):
-        self.conn = None
-        self.cur = None
-        self.ssh_tunnel = None
 
-    def create_ssh_tunnel(self):
-        """
-        Creates and returns an SSHTunnelForwarder object.
-        """
-        try:
-            self.ssh_tunnel = sshtunnel.SSHTunnelForwarder(
-                ('ec2-52-15-194-170.us-east-2.compute.amazonaws.com', 22),  # Bastion host
-                ssh_username='ec2-user',
-                ssh_pkey='BastionHostKeyPair.pem',  # Path to your key file
-                remote_bind_address=('databasets.chygq4ecec7u.us-east-2.rds.amazonaws.com', 5432),
-                local_bind_address=('127.0.0.1', 6543)  # Local port forwarding
-            )
-            self.ssh_tunnel.start()
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"SSH tunnel creation failed: {str(e)}"
-            )
-
-    def connect(self):
-        """Establishes connection to the database through SSH tunnel"""
-        try:
-            # First create the SSH tunnel
-            self.create_ssh_tunnel()
-
-            # Then connect to the database through the tunnel
-            self.conn = psycopg2.connect(
-                dbname='seekers',
-                user='postgres_TS',
-                password='BBCPs2025_',
-                host='127.0.0.1',  # Connect to local tunnel endpoint
-                port=6543  # Use the local tunnel port
-            )
-            self.cur = self.conn.cursor()
-        except Exception as e:
-            if self.ssh_tunnel:
-                self.ssh_tunnel.close()
-            raise HTTPException(
-                status_code=500,
-                detail=f"Database connection failed: {str(e)}"
-            )
-
-    def close(self):
-        """Closes database connection and cursor"""
-        if self.cur:
-            self.cur.close()
-        if self.conn:
-            self.conn.commit()
-            self.conn.close()
-
-    def __enter__(self):
-        self.connect()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
 
 
 # -------------------------- S3 File Download --------------------------
